@@ -1,12 +1,12 @@
 import dash
-from dash import dcc, html, Input, Output, dash_table
+from dash import dcc, html, Input, Output, dash_table, State
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
 import networkx as nx
 from datetime import datetime
 
-# Example DataFrame
+# Example DataFrame with potential missing values fixed for the 3rd record
 data = {
     "MMSI": ["211331640", "636091308", "311000072"],
     "Vessel Name": ["Sea Queen", "Ocean Explorer", "Atlantic Star"],
@@ -124,10 +124,13 @@ app.layout = dbc.Container([
                     "if": {"row_index": "odd"},
                     "backgroundColor": "rgba(0, 116, 217, 0.05)"
                 }],
+                row_selectable="multi",  # Enable multiple row selection
+                selected_rows=[],  # Initially no rows selected
             ),
             html.Br(),
             dbc.Button("Download CSV", id="download-btn", n_clicks=0, color="primary", className="mt-3"),
-            dcc.Download(id="download-dataframe-csv")
+            dcc.Download(id="download-dataframe-csv"),
+            html.Button("Download Map", id="download-map-btn", n_clicks=0, className="btn btn-primary mt-3")
         ])
     ])
 ], fluid=True)
@@ -141,9 +144,10 @@ app.layout = dbc.Container([
      Input("type-filter", "value"),
      Input("flag-filter", "value"),
      Input("date-filter", "start_date"),
-     Input("date-filter", "end_date")]
+     Input("date-filter", "end_date"),
+     Input("database-table", "selected_rows")]
 )
-def update_analytics_and_table(tab, search, types, flags, start_date, end_date):
+def update_analytics_and_table(tab, search, types, flags, start_date, end_date, selected_rows):
     # Filter Data
     filtered = df.copy()
     if search:
@@ -154,73 +158,94 @@ def update_analytics_and_table(tab, search, types, flags, start_date, end_date):
         filtered = filtered[filtered["Flag"].isin(flags)]
     if start_date and end_date:
         filtered = filtered[(filtered["Timestamp"] >= pd.Timestamp(start_date)) & (filtered["Timestamp"] <= pd.Timestamp(end_date))]
-    
+
+    # Handle selected rows for visuals (only update visual content)
+    selected_vessels = []
+    if selected_rows:
+        try:
+            selected_vessels = [filtered.iloc[row]["Vessel Name"] for row in selected_rows]
+            filtered = filtered[filtered["Vessel Name"].isin(selected_vessels)]
+        except IndexError:
+            filtered = pd.DataFrame()  # Ensure it doesn't break the code if the index is out of bounds
+
+    # Prepare Analytics Content
     analytics_content = html.P("Select a tab to view content.")
     
     if tab == "map-tab":
-        fig = px.scatter_geo(
-            filtered, 
-            lat="Latitude", 
-            lon="Longitude", 
-            hover_name="Vessel Name",
-            title="Vessel Locations", 
-            color="Type", 
-            size="Speed"
-        )
-        fig.update_layout(
-            geo=dict(
-                showland=True,
-                landcolor="rgb(243, 243, 243)",
-                subunitcolor="rgb(217, 217, 217)",
-                showocean=True,
-                oceancolor="rgb(204, 230, 255)"
-            ),
-            margin={"r": 0, "t": 30, "l": 0, "b": 0},
-            dragmode="zoom"
-        )
-        analytics_content = dcc.Graph(figure=fig)
-    
-    elif tab == "network-tab":
-        G = nx.Graph()
-        for row in adj_matrix.index:
-            for col in adj_matrix.columns:
-                if adj_matrix.loc[row, col] == 1:
-                    G.add_edge(row, col)
-        
-        pos = nx.spring_layout(G)
-        fig = px.scatter(
-            x=[pos[node][0] for node in G.nodes()],
-            y=[pos[node][1] for node in G.nodes()],
-            text=list(G.nodes()),
-            title="Social Network of Vessels"
-        )
-        analytics_content = html.Div([
-            html.H4("Adjacency Matrix"),
-            html.Pre(adj_matrix.to_string()),
-            dcc.Graph(figure=fig)
-        ])
-    
-    elif tab == "images-tab":
-        images = [
-            html.Div([
-                html.Img(src=row["Image URL"], style={"width": "100%", "border-radius": "8px"}),
-                html.P(row["Vessel Name"], className="text-center")
-            ]) for _, row in filtered.iterrows() if row["Image URL"]
-        ]
-        analytics_content = html.Div(images, style={"display": "grid", "grid-template-columns": "repeat(auto-fill, minmax(300px, 1fr))", "gap": "10px"})
-    
-    return analytics_content, filtered.to_dict("records")
+        if not filtered.empty:
+            fig = px.scatter_geo(
+                filtered, 
+                lat="Latitude", 
+                lon="Longitude", 
+                hover_name="Vessel Name",
+                title="Vessel Locations", 
+                color="Type", 
+                size="Speed",
+                size_max=10  # Reducing size of points on the map
+            )
+            fig.update_layout(
+                geo=dict(
+                    showland=True,
+                    landcolor="rgb(243, 243, 243)",
+                    subunitcolor="rgb(217, 217, 217)",
+                    showocean=True,
+                    oceancolor="rgb(204, 230, 255)"
+                ),
+                margin={"r": 0, "t": 30, "l": 0, "b": 0},
+                dragmode="zoom"
+            )
+            analytics_content = dcc.Graph(figure=fig)
+        else:
+            analytics_content = html.P("No vessels matching the filters.")
 
+    elif tab == "network-tab":
+        if not filtered.empty:
+            G = nx.Graph()
+            for row in adj_matrix.index:
+                for col in adj_matrix.columns:
+                    if adj_matrix.loc[row, col] == 1:
+                        G.add_edge(row, col)
+
+            subgraph = G.subgraph(selected_vessels) if selected_vessels else G
+            pos = nx.spring_layout(subgraph)
+            fig = px.scatter(
+                x=[pos[node][0] for node in subgraph.nodes()],
+                y=[pos[node][1] for node in subgraph.nodes()],
+                text=list(subgraph.nodes()),
+                title="Social Network of Vessels"
+            )
+            analytics_content = html.Div([
+                html.H4("Adjacency Matrix"),
+                html.Pre(adj_matrix.to_string()),
+                dcc.Graph(figure=fig)
+            ])
+        else:
+            analytics_content = html.P("No vessels selected or matching filters.")
+
+    elif tab == "images-tab":
+        if not filtered.empty:
+            images = [
+                html.Div([
+                    html.Img(src=row["Image URL"], style={"width": "100%", "border-radius": "8px"}),
+                    html.P(row["Vessel Name"], className="text-center")
+                ]) for _, row in filtered.iterrows() if row["Image URL"]
+            ]
+            analytics_content = html.Div(images, style={"display": "grid", "grid-template-columns": "repeat(auto-fill, minmax(300px, 1fr))"})
+        else:
+            analytics_content = html.P("No vessels matching the filters.")
+
+    # Update table data
+    return analytics_content, df.to_dict("records")
+
+# Download CSV callback
 @app.callback(
     Output("download-dataframe-csv", "data"),
-    [Input("download-btn", "n_clicks"),
-     Input("database-table", "data")]
+    Input("download-btn", "n_clicks"),
+    State("database-table", "data")
 )
-def export_table_to_csv(n_clicks, table_data):
+def download_csv(n_clicks, table_data):
     if n_clicks > 0:
-        filtered_df = pd.DataFrame(table_data)
-        return dcc.send_data_frame(filtered_df.to_csv, "filtered_data.csv")
+        return dict(content=pd.DataFrame(table_data).to_csv(), filename="filtered_vessels.csv")
 
-# Run app
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run_server(debug=True)
