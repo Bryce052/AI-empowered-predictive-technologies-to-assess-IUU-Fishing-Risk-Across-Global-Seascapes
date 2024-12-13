@@ -4,7 +4,10 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
 import networkx as nx
-from datetime import datetime
+from dash.exceptions import PreventUpdate
+import plotly.io as pio
+import io
+import base64
 
 # Example DataFrame with potential missing values fixed for the 3rd record
 data = {
@@ -130,7 +133,14 @@ app.layout = dbc.Container([
             html.Br(),
             dbc.Button("Download CSV", id="download-btn", n_clicks=0, color="primary", className="mt-3"),
             dcc.Download(id="download-dataframe-csv"),
-            html.Button("Download Map", id="download-map-btn", n_clicks=0, className="btn btn-primary mt-3")
+            # Wrap the download button with an anchor (<a>) tag for href support
+            html.A(
+                dbc.Button("Download Map", id="download-map-btn", n_clicks=0, className="btn btn-primary mt-3"),
+                id="download-map-link", 
+                download="vessel_map.png", 
+                href="", 
+                target="_blank"
+            )
         ])
     ])
 ], fluid=True)
@@ -157,16 +167,16 @@ def update_analytics_and_table(tab, search, types, flags, start_date, end_date, 
     if flags:
         filtered = filtered[filtered["Flag"].isin(flags)]
     if start_date and end_date:
-        filtered = filtered[(filtered["Timestamp"] >= pd.Timestamp(start_date)) & (filtered["Timestamp"] <= pd.Timestamp(end_date))]
+        filtered = filtered[(filtered["Timestamp"].dt.date >= pd.to_datetime(start_date).date()) & 
+                             (filtered["Timestamp"].dt.date <= pd.to_datetime(end_date).date())]
 
     # Handle selected rows for visuals (only update visual content)
     selected_vessels = []
     if selected_rows:
         try:
             selected_vessels = [filtered.iloc[row]["Vessel Name"] for row in selected_rows]
-            filtered = filtered[filtered["Vessel Name"].isin(selected_vessels)]
         except IndexError:
-            filtered = pd.DataFrame()  # Ensure it doesn't break the code if the index is out of bounds
+            selected_vessels = []  # Ensure it doesn't break the code if the index is out of bounds
 
     # Prepare Analytics Content
     analytics_content = html.P("Select a tab to view content.")
@@ -193,6 +203,18 @@ def update_analytics_and_table(tab, search, types, flags, start_date, end_date, 
                 ),
                 margin={"r": 0, "t": 30, "l": 0, "b": 0},
                 dragmode="zoom"
+            )
+            # Filter map data to selected vessels only
+            filtered_map = filtered[filtered["Vessel Name"].isin(selected_vessels)] if selected_vessels else filtered
+            fig = px.scatter_geo(
+                filtered_map, 
+                lat="Latitude", 
+                lon="Longitude", 
+                hover_name="Vessel Name",
+                title="Vessel Locations", 
+                color="Type", 
+                size="Speed",
+                size_max=10
             )
             analytics_content = dcc.Graph(figure=fig)
         else:
@@ -228,24 +250,34 @@ def update_analytics_and_table(tab, search, types, flags, start_date, end_date, 
                 html.Div([
                     html.Img(src=row["Image URL"], style={"width": "100%", "border-radius": "8px"}),
                     html.P(row["Vessel Name"], className="text-center")
-                ]) for _, row in filtered.iterrows() if row["Image URL"]
+                ]) for _, row in filtered.iterrows() if row["Vessel Name"] in selected_vessels or not selected_vessels
             ]
             analytics_content = html.Div(images, style={"display": "grid", "grid-template-columns": "repeat(auto-fill, minmax(300px, 1fr))"})
         else:
             analytics_content = html.P("No vessels matching the filters.")
 
-    # Update table data
+    # Update table data with filtered content (this remains static)
     return analytics_content, df.to_dict("records")
 
 # Download CSV callback
 @app.callback(
     Output("download-dataframe-csv", "data"),
     Input("download-btn", "n_clicks"),
+    State("database-table", "selected_rows"),
     State("database-table", "data")
 )
-def download_csv(n_clicks, table_data):
+def download_csv(n_clicks, selected_rows, table_data):
     if n_clicks > 0:
-        return dict(content=pd.DataFrame(table_data).to_csv(), filename="filtered_vessels.csv")
+        if selected_rows:
+            # Only include selected rows
+            selected_data = [table_data[i] for i in selected_rows]
+        else:
+            # If no rows selected, return all data
+            selected_data = table_data
+        
+        return dict(content=pd.DataFrame(selected_data).to_csv(), filename="filtered_vessels.csv")
+
+
 
 if __name__ == '__main__':
     app.run_server(debug=True)
