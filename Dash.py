@@ -1,5 +1,3 @@
-# Install required packages - pip install dash pandas plotly networkx dash-bootstrap-components
-
 import dash
 from dash import dcc, html, Input, Output, dash_table
 import dash_bootstrap_components as dbc
@@ -41,61 +39,98 @@ adj_matrix = pd.DataFrame(
 )
 
 # Initialize Dash app
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.LUX])
 
 # Layout
 app.layout = dbc.Container([
+    # Header Row
     dbc.Row([
+        dbc.Col(html.H2("Maritime Data Command Center", className="text-center text-primary font-weight-bold"), width=12)
+    ], className="mb-4"),
+
+    # Main Dashboard Layout with Sidebar and Content
+    dbc.Row([
+        # Sidebar for Filters
         dbc.Col([
-            html.H2("Maritime Data Command Center"),
-            dbc.Input(id="search-input", placeholder="Search MMSI or Vessel Name", type="text"),
-            html.Br(),
-            dcc.Dropdown(
-                id="type-filter",
-                options=[{"label": t, "value": t} for t in df["Type"].unique()],
-                multi=True,
-                placeholder="Filter by Vessel Type"
-            ),
-            dcc.Dropdown(
-                id="flag-filter",
-                options=[{"label": f, "value": f} for f in df["Flag"].unique()],
-                multi=True,
-                placeholder="Filter by Flag"
-            ),
-            dcc.DatePickerRange(
-                id="date-filter",
-                start_date=df["Timestamp"].min().date(),
-                end_date=df["Timestamp"].max().date()
-            ),
+            html.Div([
+                html.H4("Filters", className="text-info"),
+                dbc.Input(id="search-input", placeholder="Search MMSI or Vessel Name", type="text", className="mb-3"),
+                
+                # Vessel Type Filter
+                dbc.Row([
+                    dbc.Col(dbc.Label("Vessel Type", html_for="type-filter"), width=12),
+                    dbc.Col(dcc.Dropdown(
+                        id="type-filter",
+                        options=[{"label": t, "value": t} for t in df["Type"].unique()],
+                        multi=True,
+                        placeholder="Select Vessel Type",
+                        className="mb-3"
+                    ), width=12)
+                ], className="mb-3"),
+                
+                # Flag Filter
+                dbc.Row([
+                    dbc.Col(dbc.Label("Flag", html_for="flag-filter"), width=12),
+                    dbc.Col(dcc.Dropdown(
+                        id="flag-filter",
+                        options=[{"label": f, "value": f} for f in df["Flag"].unique()],
+                        multi=True,
+                        placeholder="Select Flag",
+                        className="mb-3"
+                    ), width=12)
+                ], className="mb-3"),
+                
+                # Date Filter
+                dbc.Row([
+                    dbc.Col(dbc.Label("Date Range", html_for="date-filter"), width=12),
+                    dbc.Col(dcc.DatePickerRange(
+                        id="date-filter",
+                        start_date=df["Timestamp"].min().date(),
+                        end_date=df["Timestamp"].max().date(),
+                        display_format="YYYY-MM-DD",
+                        className="mb-3"
+                    ), width=12)
+                ], className="mb-3"),
+            ], className="border p-4 bg-light rounded"),
+
         ], width=3),
+
+        # Main Content Area for Analytics
         dbc.Col([
-            html.H2("Analytics Hub"),
-            dcc.Tabs(id="analytics-tabs", value="map-tab", children=[
-                dcc.Tab(label="Geospatial Analysis", value="map-tab"),
-                dcc.Tab(label="Social Network Analysis", value="network-tab"),
-                dcc.Tab(label="Vessel Images", value="images-tab")
-            ]),
-            html.Div(id="analytics-content"),
+            html.Div([
+                dcc.Tabs(id="analytics-tabs", value="map-tab", children=[
+                    dcc.Tab(label="Geospatial Analysis", value="map-tab", className="bg-info text-white"),
+                    dcc.Tab(label="Social Network Analysis", value="network-tab", className="bg-info text-white"),
+                    dcc.Tab(label="Vessel Images", value="images-tab", className="bg-info text-white"),
+                ], className="mb-4"),
+                html.Div(id="analytics-content"),
+            ])
         ], width=9)
-    ]),
+    ], className="mb-4"),
+
+    # Data Table and Download Section
     dbc.Row([
         dbc.Col([
-            html.H2("Filtered Database"),
+            html.H4("Filtered Database", className="text-info mb-3"),
             dash_table.DataTable(
                 id="database-table",
                 columns=[{"name": col, "id": col} for col in df.columns],
                 data=df.to_dict("records"),
                 page_size=5,
                 style_table={"overflowX": "auto"},
-                style_cell={"textAlign": "left"},
-                style_header={"fontWeight": "bold"}
+                style_cell={"textAlign": "left", "fontSize": "14px", "padding": "10px"},
+                style_header={"fontWeight": "bold", "backgroundColor": "lightblue"},
+                style_data_conditional=[{
+                    "if": {"row_index": "odd"},
+                    "backgroundColor": "rgba(0, 116, 217, 0.05)"
+                }],
             ),
             html.Br(),
-            html.Button("Download CSV", id="download-btn", n_clicks=0, className="btn btn-primary"),
+            dbc.Button("Download CSV", id="download-btn", n_clicks=0, color="primary", className="mt-3"),
             dcc.Download(id="download-dataframe-csv")
-        ], width=12)
+        ])
     ])
-])
+], fluid=True)
 
 # Callbacks
 @app.callback(
@@ -168,8 +203,8 @@ def update_analytics_and_table(tab, search, types, flags, start_date, end_date):
     elif tab == "images-tab":
         images = [
             html.Div([
-                html.Img(src=row["Image URL"], style={"width": "100%"}),
-                html.P(row["Vessel Name"])
+                html.Img(src=row["Image URL"], style={"width": "100%", "border-radius": "8px"}),
+                html.P(row["Vessel Name"], className="text-center")
             ]) for _, row in filtered.iterrows() if row["Image URL"]
         ]
         analytics_content = html.Div(images, style={"display": "grid", "grid-template-columns": "repeat(auto-fill, minmax(300px, 1fr))", "gap": "10px"})
