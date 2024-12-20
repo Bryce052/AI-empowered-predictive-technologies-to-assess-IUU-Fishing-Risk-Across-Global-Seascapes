@@ -1,0 +1,11 @@
+Vessel_Name,Vessel_Type,Owner,Flag,Speed_knots,Dimensions_m,Visited_Ports,Last_Known_Position,Status,MMSI
+Poseidon Explorer,Cargo,Oceanic Lines,Panama,15.3,200x32,"['Port of Singapore', 'Port of Rotterdam']","(1.3521, 103.8198)",In Transit,123456789
+Arctic Voyager,Tanker,Northern Seas Co.,Liberia,12.5,300x50,"['Port of Houston', 'Port of Antwerp']","(29.7499, -95.3584)",Docked,987654321
+Neptune Pioneer,Passenger,Neptune Ventures,Bahamas,18.0,120x20,"['Port of Miami', 'Port of Nassau']","(25.7617, -80.1918)",Active,192837465
+Atlantic Trader,Cargo,Atlantic Shipping,Singapore,14.0,220x40,"['Port of Hamburg', 'Port of Shanghai']","(53.5511, 9.9937)",In Transit,564738291
+Pacific Horizon,Tanker,Pacific Shipping Inc.,Marshall Islands,13.2,280x48,"['Port of Tokyo', 'Port of Los Angeles']","(35.6895, 139.6917)",Docked,374829165
+Sea Breeze,Fishing,Blue Waters Inc.,Norway,8.5,50x10,"['Port of Bergen', 'Port of Reykjavik']","(60.3913, 5.3221)",Active,111213141
+Oceanic Adventurer,Research,Ocean Research Group,USA,10.0,85x15,"['Port of Seattle', 'Port of Vancouver']","(47.6062, -122.3321)",In Transit,919293949
+Marine Conqueror,Cruise,Global Maritime Ltd.,Italy,22.0,260x36,"['Port of Venice', 'Port of Marseille']","(45.4408, 12.3155)",Docked,818283848
+Global Navigator,Container,World Transit Co.,Germany,16.7,240x45,"['Port of Dubai', 'Port of Rotterdam']","(25.276987, 55.296249)",In Transit,717273747
+Aqua Mariner,Bulk Carrier,Sea Bulk Ltd.,China,11.3,290x50,"['Port of Qingdao', 'Port of Busan']","(36.0671, 120.3826)",Active,616263646
