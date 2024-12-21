@@ -1,10 +1,12 @@
-from flask import Flask, request, jsonify, render_template, url_for, send_file, make_response
+from flask import Flask, request, jsonify, render_template, url_for, make_response
 import sqlite3
 import pandas as pd
 import folium
 import os
 import re
 import io
+import networkx as nx
+import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -44,23 +46,22 @@ def extract_vessel_name(user_query):
     phrases = ["named", "called", "find vessel", "search for", "tell me about", "look for", "find"]
     for phrase in phrases:
         if phrase in user_query:
-            # Extract everything after the phrase
-            vessel_name = user_query.split(phrase, 1)[1].strip()
-            return vessel_name
+            return user_query.split(phrase, 1)[1].strip()
     return None
 
 
 # Function to export data to CSV
-def export_data_to_csv(query):
+def export_data_to_csv(query, params=()):
+    """Generates a CSV file from a SQL query."""
     conn = connect_to_database()
-    data = pd.read_sql_query(query, conn)
-    conn.close()
-
-    # Create CSV content in memory
-    output = io.StringIO()
-    data.to_csv(output, index=False)
-    output.seek(0)
-    return output
+    try:
+        data = pd.read_sql_query(query, conn, params=params)
+        output = io.StringIO()
+        data.to_csv(output, index=False)
+        output.seek(0)
+        return output
+    finally:
+        conn.close()
 
 
 # Function to generate geospatial maps
@@ -76,8 +77,6 @@ def generate_map(data):
 # Function to generate a social network diagram
 def generate_network_diagram(data):
     """Create a social network diagram of vessels, owners, and visited ports."""
-    import networkx as nx
-
     G = nx.Graph()
 
     for _, row in data.iterrows():
@@ -109,69 +108,76 @@ def process_query(user_query):
     cursor = conn.cursor()
 
     try:
-        # Clean and normalize the user query
         user_query = clean_input(user_query.lower())
 
         # Handle Speed-Based Queries
         if "speed" in user_query or "knots" in user_query:
             min_speed, max_speed = extract_speed_range(user_query)
             if min_speed is not None and max_speed is not None:
-                cursor.execute(
-                    "SELECT vessel_name, speed_knots FROM vessels WHERE speed_knots BETWEEN ? AND ?",
-                    (min_speed, max_speed)
-                )
+                query = "SELECT * FROM vessels WHERE speed_knots BETWEEN ? AND ?"
+                cursor.execute(query, (min_speed, max_speed))
                 results = cursor.fetchall()
                 conn.close()
                 if results:
-                    return {"response": "I found these vessels within your speed range:\n" +
-                                        "\n".join([f"{name} ({speed} knots)" for name, speed in results])}
+                    download_query = f"speed_knots BETWEEN {min_speed} AND {max_speed}"
+                    return {
+                        "response": "I found these vessels within your speed range:\n" +
+                                    "\n".join([f"{row[1]} ({row[5]} knots)" for row in results]),
+                        "follow_up": "Would you like to download the data associated with this request?",
+                        "download_link": url_for("download_data", query=download_query)
+                    }
                 return {"response": "I couldn’t find any vessels within that speed range."}
-            return {"response": "It looks like there's an issue with the speed format. Try something like: 'speed 10 to 20'."}
 
         # Handle Owner-Based Queries
         if "owned by" in user_query:
             owner = user_query.split("owned by")[-1].strip()
-            cursor.execute("SELECT vessel_name FROM vessels WHERE LOWER(owner) = ?", (owner.lower(),))
+            query = "SELECT * FROM vessels WHERE LOWER(owner) = ?"
+            cursor.execute(query, (owner.lower(),))
             results = cursor.fetchall()
             conn.close()
             if results:
-                return {"response": f"The following vessels are owned by {owner.capitalize()}:\n" +
-                                    ", ".join([row[0] for row in results])}
+                download_query = f"LOWER(owner) = '{owner.lower()}'"
+                return {
+                    "response": f"The following vessels are owned by {owner.capitalize()}:\n" +
+                                ", ".join([row[1] for row in results]),
+                    "follow_up": "Would you like to download the data associated with this request?",
+                    "download_link": url_for("download_data", query=download_query)
+                }
             return {"response": f"I couldn’t find any vessels owned by {owner.capitalize()}."}
 
+       
         # Handle Vessel Name Queries
         if "vessel" in user_query:
             vessel_name = extract_vessel_name(user_query)
             if vessel_name:
-                cursor.execute(
-                    '''SELECT vessel_name, vessel_type, owner, flag, speed_knots, dimensions,
-                              visited_ports, last_known_position, status, mmsi
-                       FROM vessels
-                       WHERE LOWER(vessel_name) = ?''',
-                    (vessel_name.lower(),)
-                )
-                result = cursor.fetchone()
-                conn.close()
-                if result:
-                    (
-                        vessel_name,
-                        vessel_type,
-                        owner,
-                        flag,
-                        speed_knots,
-                        dimensions,
-                        visited_ports,
-                        last_known_position,
-                        status,
-                        mmsi,
-                    ) = result
-                    return {"response": (
-                        f"The {vessel_name} is a {vessel_type} vessel owned by {owner}. "
-                        f"It sails under the {flag} flag and can travel at a maximum speed of {speed_knots} knots. "
-                        f"Recently, it was near {last_known_position} and its current status is '{status}'. "
-                        f"It has visited ports such as {visited_ports}."
-                    )}
-                return {"response": f"I couldn’t find any vessel named '{vessel_name}'."}
+                query = '''SELECT vessel_name, vessel_type, owner, flag, speed_knots, dimensions,
+                   visited_ports, last_known_position, status, mmsi
+                   FROM vessels
+                   WHERE LOWER(vessel_name) = ?'''
+            cursor.execute(query, (vessel_name.lower(),))
+            result = cursor.fetchone()
+            conn.close()
+            if result:
+                vessel_name, vessel_type, owner, flag, speed_knots, dimensions, visited_ports, \
+                    last_known_position, status, mmsi = result
+
+            # Natural language response construction
+            response = (
+                f"Sure, here's what I found about the vessel '{vessel_name}':\n"
+                f"'{vessel_name}' is a {vessel_type} vessel owned by {owner}. "
+                f"It sails under the flag of {flag} and has a maximum speed of {speed_knots} knots. "
+                f"Its dimensions are {dimensions}, and its most recent known location was at {last_known_position}. "
+                f"Currently, the vessel is '{status}'.\n"
+                f"Some of the ports it has visited include: {visited_ports}.\n"
+                f"Additionally, its MMSI (Maritime Mobile Service Identity) is {mmsi}."
+            )
+
+            return {
+                "response": response,
+                "follow_up": "Does this help? Would you like to download the detailed data for this vessel?",
+                "download_link": url_for("download_data", query=f"LOWER(vessel_name) = '{vessel_name.lower()}'")
+            }
+        return {"response": f"I'm sorry, but I couldn’t find any vessel named '{vessel_name}'. Maybe you can check the name and try again?"}
 
         # Handle Status Queries
         if any(status in user_query for status in ["in transit", "docked", "active"]):
@@ -182,33 +188,36 @@ def process_query(user_query):
             elif "active" in user_query:
                 status = "active"
 
-            cursor.execute("SELECT vessel_name FROM vessels WHERE LOWER(status) = ?", (status,))
+            query = "SELECT * FROM vessels WHERE LOWER(status) = ?"
+            cursor.execute(query, (status,))
             results = cursor.fetchall()
             conn.close()
             if results:
-                return {"response": f"The following vessels are currently '{status.capitalize()}':\n" +
-                                    ", ".join([row[0] for row in results])}
+                download_query = f"LOWER(status) = '{status}'"
+                return {
+                    "response": f"The following vessels are currently '{status.capitalize()}':\n" +
+                                ", ".join([row[1] for row in results]),
+                    "follow_up": "Would you like to download the data associated with this request?",
+                    "download_link": url_for("download_data", query=download_query)
+                }
             return {"response": f"I couldn’t find any vessels with the status '{status.capitalize()}'."}
 
         # Handle Flag Queries
         if "flag" in user_query or "registered under" in user_query or "sail under" in user_query:
             flag = extract_flag(user_query)
-            cursor.execute("SELECT vessel_name FROM vessels WHERE LOWER(flag) LIKE ?", (f"%{flag.lower()}%",))
+            query = "SELECT * FROM vessels WHERE LOWER(flag) LIKE ?"
+            cursor.execute(query, (f"%{flag.lower()}%",))
             results = cursor.fetchall()
             conn.close()
             if results:
-                return {"response": f"Under the {flag.capitalize()} flag, I found the following vessels: " +
-                                    ", ".join([row[0] for row in results])}
+                download_query = f"LOWER(flag) LIKE '%{flag.lower()}%'"
+                return {
+                    "response": f"Under the {flag.capitalize()} flag, I found the following vessels: " +
+                                ", ".join([row[1] for row in results]),
+                    "follow_up": "Would you like to download the data associated with this request?",
+                    "download_link": url_for("download_data", query=download_query)
+                }
             return {"response": f"I couldn’t find any vessels registered under the {flag.capitalize()} flag."}
-
-        # Handle CSV Export
-        if "export" in user_query or "csv" in user_query:
-            query = "SELECT * FROM vessels WHERE status = 'In Transit'"
-            csv_content = export_data_to_csv(query)
-            response = make_response(csv_content.getvalue())
-            response.headers["Content-Disposition"] = "attachment; filename=vessels_in_transit.csv"
-            response.headers["Content-Type"] = "text/csv"
-            return response
 
         return {"response": "I'm sorry, I didn’t quite understand your request. Can you try rephrasing it?"}
 
@@ -216,33 +225,28 @@ def process_query(user_query):
         return {"response": f"An error occurred: {e}"}
     finally:
         conn.close()
-# Function to export data to CSV
-def export_data_to_csv(query):
-    conn = connect_to_database()
-    data = pd.read_sql_query(query, conn)
-    conn.close()
 
-    # Generate CSV content in memory
-    output = io.StringIO()
-    data.to_csv(output, index=False)
-    output.seek(0)
-    return output
+
+@app.route("/download")
+def download_data():
+    query_params = request.args.get("query", "")
+    query = f"SELECT * FROM vessels WHERE {query_params}"  # Dynamically apply the query filters
+    csv_content = export_data_to_csv(query)
+    response = make_response(csv_content.getvalue())
+    response.headers["Content-Disposition"] = "attachment; filename=requested_data.csv"
+    response.headers["Content-Type"] = "text/csv"
+    return response
+
 
 @app.route("/process", methods=["POST"])
 def process_chat():
     user_query = request.json.get("query", "")
-
-    # Check for export requests
-    if "export" in user_query.lower() or "csv" in user_query.lower():
-        query = "SELECT * FROM vessels WHERE status = 'In Transit'"
-        csv_content = export_data_to_csv(query)
-        response = make_response(csv_content.getvalue())
-        response.headers["Content-Disposition"] = "attachment; filename=vessels_in_transit.csv"
-        response.headers["Content-Type"] = "text/csv"
-        return response
-
     response = process_query(user_query)
-    return jsonify({"response": response["response"]})
+    return jsonify({
+        "response": response["response"],
+        "follow_up": response.get("follow_up"),
+        "download_link": response.get("download_link")
+    })
 
 
 @app.route("/")
@@ -251,5 +255,4 @@ def chatbot():
 
 
 if __name__ == "__main__":
-    os.makedirs("static", exist_ok=True)
     app.run(debug=True)
