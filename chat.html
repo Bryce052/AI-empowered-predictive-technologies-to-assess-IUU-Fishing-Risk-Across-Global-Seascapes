@@ -118,6 +118,21 @@
             margin-left: 10px;
             cursor: pointer;
         }
+
+        .download-button {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+            margin-top: 10px;
+            display: inline-block;
+        }
+
+        .download-button:hover {
+            background: #218838;
+        }
     </style>
     <script>
         async function sendMessage(event) {
@@ -134,7 +149,7 @@
             userContainer.className = "message-container user";
             const userIcon = document.createElement("div");
             userIcon.className = "icon user-icon";
-            userIcon.textContent = "Guest"; // Full word for the end-user icon
+            userIcon.textContent = "Guest";
             const userMessage = document.createElement("div");
             userMessage.className = "message user-message";
             userMessage.textContent = query;
@@ -150,7 +165,7 @@
             botContainer.className = "message-container bot";
             const botIcon = document.createElement("div");
             botIcon.className = "icon bot-icon";
-            botIcon.textContent = "Chatbot"; // Full word for the chatbot icon
+            botIcon.textContent = "Chatbot";
             const typingIndicator = document.createElement("div");
             typingIndicator.className = "message bot-message";
             typingIndicator.textContent = "Chatbot is typing...";
@@ -162,6 +177,9 @@
             chatArea.scrollTop = chatArea.scrollHeight;
 
             try {
+                // Simulate reading delay
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+
                 // Send query to the server
                 const response = await fetch("/process", {
                     method: "POST",
@@ -174,7 +192,7 @@
                 // Remove typing indicator
                 botContainer.removeChild(typingIndicator);
 
-                // Simulate word-by-word typing
+                // Display bot response word by word
                 const botMessage = document.createElement("div");
                 botMessage.className = "message bot-message";
                 botContainer.appendChild(botMessage);
@@ -186,8 +204,25 @@
                     if (index < words.length) {
                         botMessage.textContent += words[index] + " ";
                         index++;
-                        setTimeout(typeWord, 150); // Adjust typing speed here
+                        setTimeout(typeWord, 100); // Adjust typing speed here
                     } else {
+                        // Add follow-up message and download link if available
+                        if (data.follow_up) {
+                            const followUpMessage = document.createElement("div");
+                            followUpMessage.className = "message bot-message";
+                            followUpMessage.textContent = data.follow_up;
+
+                            if (data.download_link) {
+                                const downloadButton = document.createElement("a");
+                                downloadButton.href = data.download_link;
+                                downloadButton.textContent = "Download Data";
+                                downloadButton.className = "download-button";
+                                followUpMessage.appendChild(downloadButton);
+                            }
+
+                            botContainer.appendChild(followUpMessage);
+                        }
+
                         chatArea.scrollTop = chatArea.scrollHeight; // Scroll to bottom
                     }
                 }
