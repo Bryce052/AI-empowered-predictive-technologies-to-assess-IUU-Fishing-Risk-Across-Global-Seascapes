@@ -66,7 +66,7 @@ Illegal, Unreported, and Unregulated (IUU) fishing represents one of the greates
 - **Docker**: Containerization for deployment
 - **PostgreSQL/PostGIS**: Spatial database
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 IUU-fishing-risk-assessment/
@@ -144,7 +144,7 @@ IUU-fishing-risk-assessment/
 └── README.md
 ```
 
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
 - Python 3.8 or higher
@@ -165,7 +165,7 @@ git clone https://github.com/Bryce052/IUU-fishing-risk-assessment.git
 cd IUU-fishing-risk-assessment
 ```
 
-## 📈 Roadmap
+## Roadmap
 
 ### Current Phase (Q1-Q2 2025)
 - ✅ Data pipeline development
