@@ -2,7 +2,7 @@
 
 An advanced artificial intelligence and machine learning platform for predicting and assessing Illegal, Unreported, and Unregulated (IUU) fishing risk across global maritime regions. This project combines satellite imagery, vessel tracking data, and environmental factors to provide actionable insights for fisheries management and marine conservation.
 
-## 🌊 Project Overview
+## Project Overview
 
 Illegal, Unreported, and Unregulated (IUU) fishing represents one of the greatest threats to sustainable fisheries and marine ecosystems worldwide. This project leverages business intelligence, AI, and machine learning technologies to:
 
